@@ -9,11 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorageService from '../storage/AsyncStorageService';
-import { COLORS } from '../constants';
+import { useTheme } from '../context/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
 const WelcomeScreen = ({ navigation }) => {
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,11 +40,13 @@ const WelcomeScreen = ({ navigation }) => {
     }
   };
 
+  const styles = createStyles(colors);
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
       
-      <View style={[styles.background, { backgroundColor: COLORS.primary }]} />
+      <View style={[styles.background, { backgroundColor: colors.primary }]} />
       
       <SafeAreaView style={styles.content}>
         <View style={styles.logoContainer}>
@@ -59,7 +62,7 @@ const WelcomeScreen = ({ navigation }) => {
 
         {loading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.white} />
+            <ActivityIndicator size="large" color={colors.white} />
             <Text style={styles.loadingText}>Cargando...</Text>
           </View>
         )}
@@ -68,7 +71,7 @@ const WelcomeScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -107,7 +110,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Math.min(48, width * 0.12),
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: colors.white,
     marginBottom: 12,
     textAlign: 'center',
     letterSpacing: 1,
@@ -130,7 +133,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: COLORS.white,
+    color: colors.white,
     fontWeight: '500',
   },
 });

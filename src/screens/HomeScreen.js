@@ -1,432 +1,496 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
+  Alert,
   RefreshControl,
-  StatusBar,
-  Dimensions,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorageService from '../storage/AsyncStorageService';
-import { COLORS } from '../constants';
-import {
-  getWorkWeekStart,
-  getWorkWeekEnd,
-  formatDateKey,
-  getWorkWeekDates,
-  generateWeekId,
-  isDateInWeek,
-} from '../utils/dateHelpers';
-import {
-  calculateWeekHours,
-  calculateWeekPay,
-  createTurn,
-  hasTurn,
-  addTurnToDay,
-  removeTurnFromDay,
-  formatMoney,
-  formatHours,
-} from '../utils/calculations';
-import WeekSummary from '../components/WeekSummary';
-import DaySelector from '../components/DaySelector';
-import TurnButton from '../components/TurnButton';
-import LoadingScreen from '../components/LoadingScreen';
-import CustomAlert from '../components/CustomAlert';
-import { hapticSuccess, hapticError } from '../utils/haptics';
-
-const { width } = Dimensions.get('window');
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../context/ThemeContext";
+import { useWeek } from "../context/WeekContext";
+import { useWorker } from "../context/WorkerContext";
+import WeekSummary from "../components/WeekSummary";
+import DayCard from "../components/DayCard";
+import TurnEditModal from "../components/TurnEditModal";
+import { calculateWeekStats } from "../utils/calculations";
+import { TURN_TYPES, TURN_SCHEDULES } from "../constants";
 
 const HomeScreen = ({ navigation }) => {
-  const [worker, setWorker] = useState(null);
-  const [currentWeek, setCurrentWeek] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [loading, setLoading] = useState(true);
+  const { colors } = useTheme();
+  const { workerConfig } = useWorker();
+  const {
+    currentWeek,
+    initializeWeek,
+    addTurn,
+    updateTurn,
+    deleteTurn,
+    checkInTurn,
+    closeWeek,
+  } = useWeek();
+
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [showTurnMenu, setShowTurnMenu] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    type: 'info',
-    title: '',
-    message: '',
-    buttons: [{ text: 'OK', onPress: () => {}, style: 'default' }],
-  });
+  const [editingTurn, setEditingTurn] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
-  );
+  const styles = createStyles(colors);
 
-  const loadData = async () => {
-    try {
-      const workerConfig = await AsyncStorageService.getWorkerConfig();
-      const week = await AsyncStorageService.getCurrentWeek();
+  useEffect(() => {
+    if (!currentWeek) {
+      // Inicializar semana automáticamente (Miércoles a Martes)
+      const today = new Date();
+      const dayOfWeek = today.getDay();
 
-      if (!workerConfig || !week) {
-        navigation.replace('Welcome');
-        return;
-      }
+      // Calcular el miércoles de esta semana
+      const daysUntilWednesday = (3 - dayOfWeek + 7) % 7;
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - daysUntilWednesday);
+      startDate.setHours(0, 0, 0, 0);
 
-      setWorker(workerConfig);
-      setCurrentWeek(week);
+      // Fin de semana es el martes siguiente
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
 
-      const weekStart = new Date(week.startDate);
-      if (!isDateInWeek(selectedDate, week.startDate)) {
-        setSelectedDate(weekStart);
-      }
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      initializeWeek(startDate, endDate);
     }
-  };
+  }, [currentWeek]);
 
-  const onRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    loadData();
+    // Simular refresh (aquí podrías recargar datos si es necesario)
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
   };
 
-  const createNewWeek = async () => {
-    if (!worker) return;
-
-    const startDate = getWorkWeekStart(new Date());
-    const endDate = getWorkWeekEnd(startDate);
-    const weekDates = getWorkWeekDates(startDate);
-
-    const days = weekDates.map(date => {
-      const dayOfWeek = date.getDay();
-      const daySchedule = worker.weekSchedule.find(s => s.dayOfWeek === dayOfWeek);
-      
-      const turns = daySchedule?.isWorkDay && daySchedule.turns.length > 0
-        ? daySchedule.turns.map(type => ({
-            type,
-            hours: worker.turnConfig[type],
-          }))
-        : [];
-
-      const totalHours = turns.reduce((sum, turn) => sum + turn.hours, 0);
-
-      return {
-        date: formatDateKey(date),
-        turns,
-        totalHours,
-      };
-    });
-
-    const totalHours = days.reduce((sum, day) => sum + day.totalHours, 0);
-    const totalPay = totalHours * worker.hourlyRate;
-
-    const newWeek = {
-      id: generateWeekId(startDate),
-      startDate: formatDateKey(startDate),
-      endDate: formatDateKey(endDate),
-      days,
-      totalHours,
-      totalPay,
-      isClosed: false,
-    };
-
-    await AsyncStorageService.saveCurrentWeek(newWeek);
-    setCurrentWeek(newWeek);
-    setSelectedDate(startDate);
+  const handleDayPress = (day) => {
+    setSelectedDay(day);
+    setShowTurnMenu(true);
   };
 
-  const closeCurrentWeekAndStartNew = async () => {
-    if (!currentWeek || !worker) return;
+  const handleAddTurn = (turnType) => {
+    if (!selectedDay) return;
 
-    try {
-      const closedWeek = {
-        ...currentWeek,
-        isClosed: true,
-      };
+    // Mostrar opciones: Check-in ahora o Agregar manualmente
+    Alert.alert(
+      "Agregar Turno",
+      "¿Cómo deseas registrar este turno?",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "⏱️ Check-in Ahora",
+          onPress: () => {
+            checkInTurn(selectedDay.date, turnType);
+            setShowTurnMenu(false);
+          },
+        },
+        {
+          text: "✏️ Agregar Manual",
+          onPress: () => {
+            // Crear turno vacío y abrir editor
+            addTurn(selectedDay.date, turnType, false);
+            setShowTurnMenu(false);
 
-      await AsyncStorageService.addWeekToHistory(closedWeek);
-      await createNewWeek();
-
-      hapticSuccess();
-      setAlertConfig({
-        type: 'success',
-        title: '¡Nueva semana! 🎉',
-        message: `Tu semana anterior (${formatHours(closedWeek.totalHours)} trabajadas) se guardó en el historial.\n\n¡Comienza una nueva semana de trabajo!`,
-        buttons: [{ text: 'Entendido', onPress: () => {}, style: 'default' }],
-      });
-      setAlertVisible(true);
-    } catch (error) {
-      console.error('Error closing week:', error);
-      hapticError();
-      setAlertConfig({
-        type: 'error',
-        title: 'Error',
-        message: 'No se pudo cerrar la semana actual',
-        buttons: [{ text: 'OK', onPress: () => {}, style: 'default' }],
-      });
-      setAlertVisible(true);
-    }
+            // Esperar un momento para que se actualice el estado
+            setTimeout(() => {
+              const day = currentWeek.days.find(
+                (d) =>
+                  new Date(d.date).toDateString() ===
+                  new Date(selectedDay.date).toDateString(),
+              );
+              const turn = day?.turns.find((t) => t.type === turnType);
+              if (turn) {
+                setEditingTurn(turn);
+                setShowEditModal(true);
+              }
+            }, 100);
+          },
+        },
+      ],
+      { cancelable: true },
+    );
   };
 
-  const toggleTurn = async (turnType) => {
-    if (!currentWeek || !worker) return;
-
-    const dateKey = formatDateKey(selectedDate);
-    const dayIndex = currentWeek.days.findIndex(day => day.date === dateKey);
-
-    if (dayIndex === -1) return;
-
-    const day = currentWeek.days[dayIndex];
-    const hasThisTurn = hasTurn(day, turnType);
-
-    let updatedDay;
-    if (hasThisTurn) {
-      updatedDay = removeTurnFromDay(day, turnType);
-    } else {
-      const turn = createTurn(turnType, worker.turnConfig[turnType]);
-      updatedDay = addTurnToDay(day, turn);
-    }
-
-    const updatedDays = [...currentWeek.days];
-    updatedDays[dayIndex] = updatedDay;
-
-    const totalHours = calculateWeekHours(updatedDays);
-    const totalPay = calculateWeekPay(totalHours, worker.hourlyRate);
-
-    const updatedWeek = {
-      ...currentWeek,
-      days: updatedDays,
-      totalHours,
-      totalPay,
-    };
-
-    await AsyncStorageService.saveCurrentWeek(updatedWeek);
-    setCurrentWeek(updatedWeek);
+  const handleCloseWeek = () => {
+    Alert.alert(
+      "Cerrar Semana",
+      "¿Estás seguro de cerrar esta semana? Los datos se guardarán en el historial.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Cerrar",
+          style: "destructive",
+          onPress: async () => {
+            await closeWeek();
+            Alert.alert("Éxito", "Semana cerrada y guardada en el historial");
+          },
+        },
+      ],
+    );
   };
 
-  if (loading) {
-    return <LoadingScreen />;
+  if (!currentWeek) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.loadingText}>Cargando...</Text>
+      </View>
+    );
   }
 
-  if (!worker || !currentWeek) {
-    return <LoadingScreen />;
-  }
-
-  const selectedDay = currentWeek.days.find(
-    day => day.date === formatDateKey(selectedDate)
-  );
-
-  const workDaysData = new Map(
-    currentWeek.days.map(day => [day.date, day.totalHours])
-  );
-
-  const weekDates = getWorkWeekDates(new Date(currentWeek.startDate));
+  const weekStats = calculateWeekStats(currentWeek, workerConfig.hourlyRate);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-
+    <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Hola, {worker.name} 👋</Text>
-          <Text style={styles.subtitle}>Registra tus turnos aquí</Text>
+          <Text style={styles.greeting}>Hola, {workerConfig.name}! 👋</Text>
+          <Text style={styles.subtitle}>Gestiona tus turnos de la semana</Text>
         </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => navigation.navigate('History')}
-          >
-            <Ionicons name="time" size={24} color={COLORS.dark} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => navigation.navigate('Settings')}
-          >
-            <Ionicons name="settings" size={24} color={COLORS.dark} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => navigation.navigate("Settings")}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="settings-outline" size={24} color={colors.dark} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
+        style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
         }
       >
+        {/* Week Summary */}
         <WeekSummary
-          totalHours={currentWeek.totalHours}
-          totalPay={currentWeek.totalPay}
+          totalHours={weekStats.totalHours}
+          totalPay={weekStats.totalPay}
+          normalHours={weekStats.normalHours}
+          extraHours={weekStats.extraHours}
+          normalPay={weekStats.normalPay}
+          extraPay={weekStats.extraPay}
           startDate={currentWeek.startDate}
           endDate={currentWeek.endDate}
         />
 
-        <DaySelector
-          dates={weekDates}
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
-          workDaysData={workDaysData}
-        />
-
-        <View style={styles.turnsSection}>
-          <Text style={styles.sectionTitle}>
-            {selectedDate.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            Toca para agregar o quitar turnos
-          </Text>
-
-          <View style={styles.turnsContainer}>
-            {['M', 'T', 'N'].map(turnType => (
-              <TurnButton
-                key={turnType}
-                type={turnType}
-                hours={worker.turnConfig[turnType]}
-                isActive={selectedDay ? hasTurn(selectedDay, turnType) : false}
-                onPress={() => toggleTurn(turnType)}
-              />
-            ))}
-          </View>
-
-          {selectedDay && (
-            <View style={styles.dayTotal}>
-              <Text style={styles.dayTotalLabel}>Total del día</Text>
-              <Text style={styles.dayTotalValue}>
-                {formatHours(selectedDay.totalHours)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.calendarButton}>
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
           <TouchableOpacity
-            style={styles.button}
-            onPress={() => navigation.navigate('Calendar')}
+            style={styles.actionButton}
+            onPress={() => navigation.navigate("History")}
+            activeOpacity={0.7}
           >
-            <Ionicons name="calendar" size={24} color={COLORS.white} />
-            <Text style={styles.buttonText}>Ver Calendario Completo</Text>
+            <Ionicons
+              name="calendar-outline"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={styles.actionButtonText}>Historial</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleCloseWeek}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={20}
+              color={colors.success}
+            />
+            <Text style={styles.actionButtonText}>Cerrar Semana</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Days List */}
+        <View style={styles.daysContainer}>
+          <Text style={styles.sectionTitle}>Días de la Semana</Text>
+          {currentWeek.days.map((day) => (
+            <View key={day.date}>
+              <DayCard day={day} workerConfig={workerConfig} />
+
+              {/* Botón para agregar turno */}
+              <TouchableOpacity
+                style={styles.addTurnButton}
+                onPress={() => handleDayPress(day)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add-circle" size={20} color={colors.primary} />
+                <Text style={styles.addTurnButtonText}>Agregar Turno</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        {/* Footer spacing */}
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      <CustomAlert
-        visible={alertVisible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={() => setAlertVisible(false)}
+      {/* Turn Menu Modal */}
+      {showTurnMenu && (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowTurnMenu(false)}
+          />
+          <View style={styles.turnMenu}>
+            <View style={styles.turnMenuHeader}>
+              <Text style={styles.turnMenuTitle}>
+                Selecciona el tipo de turno
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowTurnMenu(false)}
+                style={styles.closeMenuButton}
+              >
+                <Ionicons name="close" size={24} color={colors.gray} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.turnMenuOptions}>
+              {Object.keys(TURN_TYPES).map((type) => {
+                const schedule = TURN_SCHEDULES[type];
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={styles.turnOption}
+                    onPress={() => handleAddTurn(type)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.turnOptionLeft}>
+                      <Text style={styles.turnOptionEmoji}>
+                        {schedule.emoji}
+                      </Text>
+                      <View>
+                        <Text style={styles.turnOptionLabel}>
+                          Turno {schedule.label}
+                        </Text>
+                        <Text style={styles.turnOptionTime}>
+                          {schedule.start} - {schedule.end}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color={colors.gray}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Modal de edición de turno */}
+      <TurnEditModal
+        visible={showEditModal}
+        turn={editingTurn}
+        onSave={(updatedTurn) => {
+          updateTurn(selectedDay.date, editingTurn.type, updatedTurn);
+          setShowEditModal(false);
+          setEditingTurn(null);
+        }}
+        onDelete={(turn) => {
+          deleteTurn(selectedDay.date, turn.type);
+          setShowEditModal(false);
+          setEditingTurn(null);
+        }}
+        onCancel={() => {
+          setShowEditModal(false);
+          setEditingTurn(null);
+        }}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.backgroundSecondary,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  greeting: {
-    fontSize: Math.min(24, width * 0.06),
-    fontWeight: 'bold',
-    color: COLORS.dark,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.gray,
-    marginTop: 2,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: COLORS.backgroundSecondary,
-  },
-  turnsSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 4,
-    textTransform: 'capitalize',
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: COLORS.gray,
-    marginBottom: 16,
-  },
-  turnsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  dayTotal: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  dayTotalLabel: {
-    fontSize: 16,
-    color: COLORS.gray,
-    fontWeight: '500',
-  },
-  dayTotalValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.success,
-  },
-  calendarButton: {
-    paddingHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 16,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  buttonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 12,
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    loadingContainer: {
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    loadingText: {
+      fontSize: 16,
+      color: colors.gray,
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      paddingTop: 60,
+      paddingBottom: 20,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    greeting: {
+      fontSize: 24,
+      fontWeight: "bold",
+      color: colors.dark,
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: 14,
+      color: colors.gray,
+    },
+    settingsButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.backgroundSecondary,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    scrollView: {
+      flex: 1,
+    },
+    quickActions: {
+      flexDirection: "row",
+      paddingHorizontal: 20,
+      gap: 12,
+      marginBottom: 24,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 14,
+      gap: 8,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    actionButtonText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.dark,
+    },
+    daysContainer: {
+      paddingHorizontal: 20,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: colors.dark,
+      marginBottom: 16,
+    },
+    addTurnButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${colors.primary}10`,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 16,
+      gap: 6,
+      borderWidth: 1,
+      borderColor: `${colors.primary}30`,
+      borderStyle: "dashed",
+    },
+    addTurnButtonText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    modalOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "flex-end",
+    },
+    modalBackdrop: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.overlay,
+    },
+    turnMenu: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 40,
+    },
+    turnMenuHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      paddingVertical: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    turnMenuTitle: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: colors.dark,
+    },
+    closeMenuButton: {
+      padding: 4,
+    },
+    turnMenuOptions: {
+      paddingHorizontal: 20,
+      paddingTop: 16,
+      gap: 12,
+    },
+    turnOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.backgroundSecondary,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    turnOptionLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    turnOptionEmoji: {
+      fontSize: 32,
+    },
+    turnOptionLabel: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.dark,
+      marginBottom: 2,
+    },
+    turnOptionTime: {
+      fontSize: 13,
+      color: colors.gray,
+    },
+  });
 
 export default HomeScreen;

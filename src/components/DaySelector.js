@@ -1,13 +1,14 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions } from 'react-native';
-import { COLORS } from '../constants';
 import { formatDateShort, getDayName, isSameDayHelper } from '../utils/dateHelpers';
 import { hapticSelection } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 const DAY_BUTTON_WIDTH = Math.min(70, (width - 48) / 5);
 
 const DaySelector = ({ dates, selectedDate, onSelectDate, workDaysData }) => {
+  const { colors } = useTheme();
   const today = new Date();
   const scrollViewRef = useRef(null);
 
@@ -15,6 +16,8 @@ const DaySelector = ({ dates, selectedDate, onSelectDate, workDaysData }) => {
     hapticSelection();
     onSelectDate(date);
   };
+
+  const styles = createStyles(colors);
 
   return (
     <View style={styles.container}>
@@ -80,12 +83,12 @@ const DaySelector = ({ dates, selectedDate, onSelectDate, workDaysData }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.card,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -97,13 +100,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 14,
-    backgroundColor: COLORS.backgroundSecondary,
+    backgroundColor: colors.backgroundSecondary,
     position: 'relative',
     minHeight: 90,
   },
   dayButtonSelected: {
-    backgroundColor: COLORS.primary,
-    shadowColor: COLORS.primary,
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
@@ -111,17 +114,17 @@ const styles = StyleSheet.create({
   },
   dayButtonToday: {
     borderWidth: 2,
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.white,
+    borderColor: colors.primary,
+    backgroundColor: colors.card,
   },
   todayBadge: {
     position: 'absolute',
     top: -10,
-    backgroundColor: COLORS.success,
+    backgroundColor: colors.success,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 10,
-    shadowColor: COLORS.success,
+    shadowColor: colors.success,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -130,43 +133,43 @@ const styles = StyleSheet.create({
   todayBadgeText: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: colors.white,
     textTransform: 'uppercase',
   },
   dayName: {
     fontSize: 11,
     fontWeight: '600',
-    color: COLORS.gray,
+    color: colors.gray,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   dayNameSelected: {
-    color: COLORS.white,
+    color: colors.white,
   },
   dayNameToday: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontWeight: 'bold',
   },
   dayNumber: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: COLORS.dark,
+    color: colors.dark,
     marginBottom: 6,
   },
   dayNumberSelected: {
-    color: COLORS.white,
+    color: colors.white,
   },
   dayNumberToday: {
-    color: COLORS.primary,
+    color: colors.primary,
   },
   indicator: {
-    backgroundColor: COLORS.success,
+    backgroundColor: colors.success,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginTop: 4,
-    shadowColor: COLORS.success,
+    shadowColor: colors.success,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
     shadowRadius: 2,
@@ -178,7 +181,7 @@ const styles = StyleSheet.create({
   indicatorText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: colors.white,
   },
 });
 

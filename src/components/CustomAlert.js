@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 const CustomAlert = ({ visible, type = 'info', title, message, buttons = [], onClose }) => {
+  const { colors } = useTheme();
+
   const getIcon = () => {
     switch (type) {
       case 'success': return 'checkmark-circle';
@@ -18,16 +20,18 @@ const CustomAlert = ({ visible, type = 'info', title, message, buttons = [], onC
 
   const getColor = () => {
     switch (type) {
-      case 'success': return COLORS.success;
-      case 'error': return COLORS.danger;
-      case 'warning': return COLORS.warning;
-      case 'info': return COLORS.primary;
-      default: return COLORS.primary;
+      case 'success': return colors.success;
+      case 'error': return colors.danger;
+      case 'warning': return colors.warning;
+      case 'info': return colors.primary;
+      default: return colors.primary;
     }
   };
 
   const defaultButtons = [{ text: 'OK', onPress: () => {}, style: 'default' }];
   const buttonsList = buttons.length > 0 ? buttons : defaultButtons;
+
+  const styles = createStyles(colors);
 
   return (
     <Modal
@@ -52,7 +56,7 @@ const CustomAlert = ({ visible, type = 'info', title, message, buttons = [], onC
                 style={[
                   styles.button,
                   button.style === 'cancel' && styles.buttonCancel,
-                  button.style === 'destructive' && styles.buttonDestructive,
+                  button.style === 'destructive' && { backgroundColor: colors.danger },
                   buttonsList.length === 1 && styles.buttonFull,
                 ]}
                 onPress={() => {
@@ -65,7 +69,6 @@ const CustomAlert = ({ visible, type = 'info', title, message, buttons = [], onC
                   style={[
                     styles.buttonText,
                     button.style === 'cancel' && styles.buttonTextCancel,
-                    button.style === 'destructive' && styles.buttonTextDestructive,
                   ]}
                 >
                   {button.text}
@@ -79,7 +82,7 @@ const CustomAlert = ({ visible, type = 'info', title, message, buttons = [], onC
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -88,7 +91,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   container: {
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
@@ -105,13 +108,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: COLORS.dark,
+    color: colors.dark,
     marginBottom: 8,
     textAlign: 'center',
   },
   message: {
     fontSize: 15,
-    color: COLORS.gray,
+    color: colors.gray,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
@@ -123,7 +126,7 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -132,21 +135,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   buttonCancel: {
-    backgroundColor: COLORS.backgroundSecondary,
-  },
-  buttonDestructive: {
-    backgroundColor: COLORS.danger,
+    backgroundColor: colors.backgroundSecondary,
   },
   buttonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: colors.white,
   },
   buttonTextCancel: {
-    color: COLORS.dark,
-  },
-  buttonTextDestructive: {
-    color: COLORS.white,
+    color: colors.dark,
   },
 });
 

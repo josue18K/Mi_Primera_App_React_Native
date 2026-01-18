@@ -1,58 +1,179 @@
-// Formatea horas (ej: 24.5 -> "24.5h" o 24 -> "24h")
+import { EXTRA_PAY_MULTIPLIER } from "../constants";
+import { calculateHoursDifference } from "./timeHelpers";
+
+/**
+ * Formatea horas decimales a string legible (Xh o X.Xh)
+ */
 export const formatHours = (hours) => {
-  return hours % 1 === 0 ? `${hours}h` : `${hours.toFixed(1)}h`;
+  if (!hours || hours === 0) return "0h";
+
+  // Redondear a 2 decimales
+  const rounded = Math.round(hours * 100) / 100;
+
+  // Si es número entero, mostrar sin decimales
+  if (Number.isInteger(rounded)) {
+    return `${rounded}h`;
+  }
+
+  // Si tiene decimales, mostrar con 1 decimal
+  return `${rounded.toFixed(1)}h`;
 };
 
-// Formatea dinero (ej: 245.5 -> "S/ 245.50")
+/**
+ * Formatea dinero a formato peruano (S/ X.XX)
+ */
 export const formatMoney = (amount) => {
+  if (!amount || amount === 0) return "S/ 0.00";
   return `S/ ${amount.toFixed(2)}`;
 };
 
-// Calcula total de horas de una semana
-export const calculateWeekHours = (days) => {
-  return days.reduce((total, day) => total + day.totalHours, 0);
+/**
+ * Calcula el pago de un turno individual
+ * Ahora usa checkInTime y checkOutTime para calcular horas reales
+ */
+export const calculateTurnPay = (turn, hourlyRate) => {
+  if (!turn || !hourlyRate) return 0;
+
+  // Si tiene check-in y check-out, calcular horas reales
+  if (turn.checkInTime && turn.checkOutTime) {
+    const hoursWorked = calculateHoursDifference(
+      turn.checkInTime,
+      turn.checkOutTime,
+    );
+    const multiplier = turn.isExtra ? EXTRA_PAY_MULTIPLIER : 1;
+    return hoursWorked * hourlyRate * multiplier;
+  }
+
+  // Fallback: si no tiene tiempos, retornar 0
+  return 0;
 };
 
-// Calcula pago total de una semana
-export const calculateWeekPay = (totalHours, hourlyRate) => {
-  return totalHours * hourlyRate;
+/**
+ * Calcula las horas trabajadas de un turno
+ */
+export const calculateTurnHours = (turn) => {
+  if (!turn || !turn.checkInTime || !turn.checkOutTime) return 0;
+  return calculateHoursDifference(turn.checkInTime, turn.checkOutTime);
 };
 
-// Crea un turno
-export const createTurn = (type, hours) => {
-  return { type, hours };
+/**
+ * Calcula el total de horas de un día
+ */
+export const calculateDayHours = (day) => {
+  if (!day || !day.turns || day.turns.length === 0) return 0;
+
+  return day.turns.reduce((total, turn) => {
+    return total + calculateTurnHours(turn);
+  }, 0);
 };
 
-// Verifica si un día tiene un turno específico
-export const hasTurn = (day, turnType) => {
-  return day.turns.some(turn => turn.type === turnType);
+/**
+ * Calcula el pago total de un día
+ */
+export const calculateDayPay = (day, hourlyRate) => {
+  if (!day || !day.turns || day.turns.length === 0) return 0;
+
+  return day.turns.reduce((total, turn) => {
+    return total + calculateTurnPay(turn, hourlyRate);
+  }, 0);
 };
 
-// Agrega un turno a un día
-export const addTurnToDay = (day, turn) => {
-  const newTurns = [...day.turns, turn];
-  const newTotalHours = newTurns.reduce((sum, t) => sum + t.hours, 0);
-  
+/**
+ * Calcula estadísticas de la semana
+ */
+export const calculateWeekStats = (week, hourlyRate) => {
+  if (!week || !week.days) {
+    return {
+      totalHours: 0,
+      normalHours: 0,
+      extraHours: 0,
+      totalPay: 0,
+      normalPay: 0,
+      extraPay: 0,
+    };
+  }
+
+  let totalHours = 0;
+  let normalHours = 0;
+  let extraHours = 0;
+  let totalPay = 0;
+  let normalPay = 0;
+  let extraPay = 0;
+
+  week.days.forEach((day) => {
+    if (day.turns && day.turns.length > 0) {
+      day.turns.forEach((turn) => {
+        const hours = calculateTurnHours(turn);
+        const pay = calculateTurnPay(turn, hourlyRate);
+
+        totalHours += hours;
+        totalPay += pay;
+
+        if (turn.isExtra) {
+          extraHours += hours;
+          extraPay += pay;
+        } else {
+          normalHours += hours;
+          normalPay += pay;
+        }
+      });
+    }
+  });
+
   return {
-    ...day,
-    turns: newTurns,
-    totalHours: newTotalHours,
+    totalHours,
+    normalHours,
+    extraHours,
+    totalPay,
+    normalPay,
+    extraPay,
   };
 };
 
-// Remueve un turno de un día
-export const removeTurnFromDay = (day, turnType) => {
-  const newTurns = day.turns.filter(turn => turn.type !== turnType);
-  const newTotalHours = newTurns.reduce((sum, t) => sum + t.hours, 0);
-  
-  return {
-    ...day,
-    turns: newTurns,
-    totalHours: newTotalHours,
-  };
-};
+/**
+ * Calcula estadísticas de un día específico
+ */
+export const calculateDayStats = (day, hourlyRate) => {
+  if (!day || !day.turns || day.turns.length === 0) {
+    return {
+      totalHours: 0,
+      normalHours: 0,
+      extraHours: 0,
+      totalPay: 0,
+      normalPay: 0,
+      extraPay: 0,
+    };
+  }
 
-// Calcula el total de horas de un día
-export const calculateDayHours = (turns) => {
-  return turns.reduce((sum, turn) => sum + turn.hours, 0);
+  let totalHours = 0;
+  let normalHours = 0;
+  let extraHours = 0;
+  let totalPay = 0;
+  let normalPay = 0;
+  let extraPay = 0;
+
+  day.turns.forEach((turn) => {
+    const hours = calculateTurnHours(turn);
+    const pay = calculateTurnPay(turn, hourlyRate);
+
+    totalHours += hours;
+    totalPay += pay;
+
+    if (turn.isExtra) {
+      extraHours += hours;
+      extraPay += pay;
+    } else {
+      normalHours += hours;
+      normalPay += pay;
+    }
+  });
+
+  return {
+    totalHours,
+    normalHours,
+    extraHours,
+    totalPay,
+    normalPay,
+    extraPay,
+  };
 };
